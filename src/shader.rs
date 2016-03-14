@@ -55,17 +55,18 @@ gfx_vertex_struct!( Vertex {
 
 
 pub struct Renderer<R: gfx::Resources, F: gfx::Factory<R>> {
-    factory: F,
-    pub pipe: gfx::PipelineState<R, pipe::Meta>,
-    data: pipe::Data<R>,
-    encoder: gfx::Encoder<R, F::CommandBuffer>,
     clear_color: [f32; 4],
     clear_depth: f32,
     clear_stencil: u8,
+    data: pipe::Data<R>,
+    encoder: gfx::Encoder<R, F::CommandBuffer>,
+    factory: F,
+    pub pipe: gfx::PipelineState<R, pipe::Meta>,
     slice: gfx::Slice<R>,
 }
 
-impl<R: gfx::Resources, F: gfx::Factory<R>> Renderer<R, F> {
+impl<R: gfx::Resources, F: gfx::Factory<R>>
+    Renderer<R, F> {
 
     pub fn new(mut factory: F, target: gfx::handle::RenderTargetView<R, gfx::format::Rgba8>,
         depth: gfx::handle::DepthStencilView<R, (gfx::format::D24_S8, gfx::format::Unorm)>, 
@@ -117,8 +118,16 @@ impl<R: gfx::Resources, F: gfx::Factory<R>> Renderer<R, F> {
         self.data.transform = proj_mat;
     }
 
+    pub fn get_projection(&self) -> Matrix4<f32> {
+        self.data.transform
+    }
+
     pub fn set_view(&mut self, view_mat: Matrix4<f32>) {
         self.data.view = view_mat;
+    }
+
+    pub fn get_view(&self) -> Matrix4<f32> {
+        self.data.view
     }
 
     pub fn clear(&mut self) {

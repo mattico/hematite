@@ -7,17 +7,20 @@ use std::path::Path;
 use std::num::Wrapping;
 
 use array::*;
-use chunk::{BiomeId, BlockState, Chunk};
 use cube;
 use gfx;
 use gfx_voxel::texture::{AtlasBuilder, ImageSize, Texture};
+use rustc_serialize::json;
+use vecmath::vec3_add;
+
+use minecraft::assets::Assets;
 use minecraft::biome::Biomes;
 use minecraft::data::BLOCK_STATES;
 use minecraft::model::OrthoRotation::*;
 use minecraft::model::{self, Model, OrthoRotation};
-use rustc_serialize::json;
+
+use chunk::{BiomeId, BlockState, Chunk};
 use shader::Vertex;
-use vecmath::vec3_add;
 
 use self::PolymorphDecision::*;
 
@@ -398,8 +401,7 @@ impl<R: gfx::Resources> BlockStates<R> {
     }
 }
 
-pub fn fill_buffer<R: gfx::Resources>(block_states: &BlockStates<R>,
-                   biomes: &Biomes, buffer: &mut Vec<Vertex>,
+pub fn fill_buffer<R: gfx::Resources>(assets: &Assets<R>, buffer: &mut Vec<Vertex>,
                    coords: [i32; 3], chunks: [[[&Chunk; 3]; 3]; 3],
                    column_biomes: [[Option<&[[BiomeId; 16]; 16]>; 3]; 3]) {
     let chunk_xyz = coords.map(|x| x as f32 * 16.0);
@@ -418,14 +420,14 @@ pub fn fill_buffer<R: gfx::Resources>(block_states: &BlockStates<R>,
                     (chunk.blocks[y][z][x], chunk.light_levels[y][z][x])
                 };
                 let this_block = at([0, 0, 0]).0;
-                let model = match block_states.get_model(this_block) {
+                let model = match assets.block_states.get_model(this_block) {
                     Some(model) if !model.polymorph_oracle.is_empty() => {
                         let mut i = 0;
                         let result;
                         loop {
                             let (cond, idx) = match model.polymorph_oracle[i].clone() {
                                 PickBlockState(id) => {
-                                    result = &block_states.models[id as usize];
+                                    result = &assets.block_states.models[id as usize];
                                     break;
                                 }
                                 IfBlock(dir, offset, idx) => {
@@ -436,16 +438,16 @@ pub fn fill_buffer<R: gfx::Resources>(block_states: &BlockStates<R>,
                                     let id = this_block.value.wrapping_add(offset as u16);
                                     let other = at(dir.xyz()).0;
                                     (other.value == id ||
-                                     block_states.get_opacity(other).is_opaque(), idx)
+                                     assets.block_states.get_opacity(other).is_opaque(), idx)
                                 }
                                 /*IfGroup(dir, group, idx) => {
                                     let other = at(dir.xyz()).0;
-                                    (block_states.models[other.value].group == group, idx)
+                                    (assets.block_states.models[other.value].group == group, idx)
                                 }
                                 IfGroupOrSolid(dir, group, idx) => {
                                     let other = at(dir.xyz()).0;
-                                    (block_states.models[other.value].group == group ||
-                                     block_states.get_opacity(other).is_opaque(), idx)
+                                    (assets.block_states.models[other.value].group == group ||
+                                     assets.block_states.get_opacity(other).is_opaque(), idx)
                                 }*/
                             };
                             if cond {
@@ -479,7 +481,7 @@ pub fn fill_buffer<R: gfx::Resources>(block_states: &BlockStates<R>,
                     match face.cull_face {
                         Some(cull_face) => {
                             let (neighbor, _) = at(cull_face.direction());
-                            if block_states.get_opacity(neighbor).is_opaque() {
+                            if assets.block_states.get_opacity(neighbor).is_opaque() {
                                 continue;
                             }
                         }
@@ -529,14 +531,14 @@ pub fn fill_buffer<R: gfx::Resources>(block_states: &BlockStates<R>,
                                                 }
                                             }
 
-                                            if above && block_states.get_opacity(neighbor).is_solid() {
+                                            if above && assets.block_states.get_opacity(neighbor).is_solid() {
                                                 light_level = 0.0;
                                             }
 
                                             above
                                         }
                                         None => {
-                                            !block_states.get_opacity(neighbor).is_opaque()
+                                            !assets.block_states.get_opacity(neighbor).is_opaque()
                                         }
                                     };
 
@@ -554,7 +556,7 @@ pub fn fill_buffer<R: gfx::Resources>(block_states: &BlockStates<R>,
                                     z.wrapping_add(dz as usize).wrapping_add(16),
                                 );
                                 let biome = match column_biomes[z / 16][x / 16] {
-                                    Some(biome) => biomes[biome[z % 16][x % 16]],
+                                    Some(biome) => assets.biomes[biome[z % 16][x % 16]],
                                     None => continue
                                 };
                                 rgb = vec3_add(rgb, match tint_source {

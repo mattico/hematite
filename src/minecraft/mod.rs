@@ -1,3 +1,4 @@
+pub mod assets;
 pub mod data_1_8_pre2;
 pub mod biome;
 pub mod block_state;
