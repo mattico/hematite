@@ -378,7 +378,7 @@ impl<R: gfx::Resources> BlockStates<R> {
         }
     }
 
-    pub fn get_model<'a>(&'a self, i: BlockState) -> Option<&'a ModelAndBehavior> {
+    pub fn get_model(&self, i: BlockState) -> Option<&ModelAndBehavior> {
         let i = i.value as usize;
         if i >= self.models.len() || self.models[i].is_empty() {
             None
@@ -387,7 +387,7 @@ impl<R: gfx::Resources> BlockStates<R> {
         }
     }
 
-    pub fn texture<'a>(&'a self) -> &'a Texture<R> {
+    pub fn texture(&self) -> &Texture<R> {
         &self.texture
     }
 
@@ -425,7 +425,7 @@ pub fn fill_buffer<R: gfx::Resources>(assets: &Assets<R>, buffer: &mut Vec<Verte
                         let mut i = 0;
                         let result;
                         loop {
-                            let (cond, idx) = match model.polymorph_oracle[i].clone() {
+                            let (cond, idx) = match model.polymorph_oracle[i] {
                                 PickBlockState(id) => {
                                     result = &assets.block_states.models[id as usize];
                                     break;
@@ -462,7 +462,7 @@ pub fn fill_buffer<R: gfx::Resources>(assets: &Assets<R>, buffer: &mut Vec<Verte
                     None => continue
                 };
                 let block_xyz = vec3_add([x, y, z].map(|x| x as f32), chunk_xyz);
-                let block_xyz = match model.random_offset.clone() {
+                let block_xyz = match model.random_offset {
                     RandomOffset::None => block_xyz,
                     random_offset => {
                         let (x, z) = (block_xyz[0], block_xyz[2]);
@@ -592,7 +592,7 @@ pub fn fill_buffer<R: gfx::Resources>(assets: &Assets<R>, buffer: &mut Vec<Verte
                     });
 
                     // Split the clockwise quad into two clockwise triangles.
-                    buffer.extend([0,1,2,2,3,0].iter().map(|&i| v[i].clone()));
+                    buffer.extend([0,1,2,2,3,0].iter().map(|&i| v[i]));
                 }
             }
         }
