@@ -1,9 +1,18 @@
 use std::cell::RefCell;
+use std::cmp::max;
 use std::collections::HashMap;
+use std::path::{ Path, PathBuf };
 
 use array::*;
 use shader::Vertex;
 use gfx;
+use vecmath::*;
+
+use minecraft;
+use minecraft::assets::Assets;
+use minecraft::block_state::BlockStates;
+use minecraft::region::Region;
+use player::Player;
 
 #[derive(Copy, Clone)]
 pub struct BlockState {
@@ -58,24 +67,94 @@ pub struct ChunkColumn<R: gfx::Resources> {
     pub biomes: [[BiomeId; SIZE]; SIZE]
 }
 
-pub struct ChunkManager<R: gfx::Resources> {
-    chunk_columns: HashMap<(i32, i32), ChunkColumn<R>>
+pub struct ChunkManager<'a, R: gfx::Resources> where R: 'a {
+    chunk_columns: HashMap<(i32, i32), ChunkColumn<R>>,
+    pending_chunks: Vec<(Vector3<i32>, &'a Option<gfx::handle::Buffer<R, Vertex>>, 
+        [[[&'a Chunk; 3]; 3]; 3], Matrix3<Option<&'a [[BiomeId; 16]; 16]>>)>,
+    region: Region,
+    region_path: PathBuf,
 }
 
-impl<R: gfx::Resources> ChunkManager<R> {
-    pub fn new() -> ChunkManager<R> {
+impl<'a, R: gfx::Resources> ChunkManager<'a, R> {
+    pub fn open(path: &Path) -> ChunkManager<'a, R> {
         ChunkManager {
-            chunk_columns: HashMap::new()
+            chunk_columns: HashMap::new(),
+            pending_chunks: Vec::new(),
+            region: Region::open(path).unwrap(),
+            region_path: path.to_path_buf(),
         }
     }
 
     pub fn add_chunk_column(&mut self, x: i32, z: i32, c: ChunkColumn<R>) {
         self.chunk_columns.insert((x, z), c);
     }
+    
+    pub fn load_chunks(&'a mut self, player: &Player) {
+        let player_chunk = [player.pos.x(), player.pos.z()]
+            .map(|x| (x / 16.0).floor() as i32);
 
-    pub fn each_chunk_and_neighbors<'a, F>(&'a self, mut f: F)
+        let regions = player_chunk.map(|x| x >> 5);
+        let c_bases = player_chunk.map(|x| max(0, (x & 0x1f) - 8) as u8);
+
+
+        self.each_chunk_and_neighbors(
+            |coords, buffer, chunks, column_biomes| {
+                self.pending_chunks.push((coords, buffer, chunks, column_biomes).clone());
+            }
+        );
+
+        for cz in c_bases[1]..c_bases[1] + 16 {
+            for cx in c_bases[0]..c_bases[0] + 16 {
+                match self.region.get_chunk_column(cx, cz) {
+                    Some(column) => {
+                        let (cx, cz) = (
+                            cx as i32 + regions[0] * 32,
+                            cz as i32 + regions[1] * 32
+                        );
+                        self.add_chunk_column(cx, cz, column)
+                    }
+                    None => {}
+                }
+            }
+        }
+    }
+    
+    pub fn get_pending(&mut self, player: &Player) -> Option<(Vector3<i32>, 
+                                                              &Option<gfx::handle::Buffer<R, Vertex>>,
+                                                              [[[&Chunk; 3]; 3]; 3],
+                                                              [[Option<&[[BiomeId; 16]; 16]>; 3]; 3])> {
+        use std::i32;
+        // HACK(eddyb) find the closest chunk to the player.
+        // The pending vector should be sorted instead.
+        let pp = player.pos.map(|i| i as i32);
+        let closest = self.pending_chunks.iter().enumerate().fold(
+            (None, i32::max_value()),
+            |(best_i, best_dist), (i, &(cc, _, _, _))| {
+                let xyz = [cc[0] - pp[0], cc[1] - pp[1], cc[2] - pp[2]]
+                    .map(|x| x * x);
+                let dist = xyz[0] + xyz[1] + xyz[2];
+                if dist < best_dist {
+                    (Some(i), dist)
+                } else {
+                    (best_i, best_dist)
+                }
+            }
+        ).0;
+        
+        let pending = closest.and_then(|i| {
+            // Vec swap_remove doesn't return Option anymore
+            match self.pending_chunks.len() {
+                0 => None,
+                _ => Some(self.pending_chunks.swap_remove(i))
+            }
+        });
+        
+        pending
+    }
+
+    pub fn each_chunk_and_neighbors<F>(&'a self, mut f: F)
         where F: FnMut(/*coords:*/ [i32; 3],
-                       /*buffer:*/ &'a RefCell<Option<gfx::handle::Buffer<R, Vertex>>>,
+                       /*buffer:*/ &'a Option<gfx::handle::Buffer<R, Vertex>>,
                        /*chunks:*/ [[[&'a Chunk; 3]; 3]; 3],
                        /*biomes:*/ [[Option<&'a [[BiomeId; SIZE]; SIZE]>; 3]; 3])
 
@@ -98,7 +177,7 @@ impl<R: gfx::Resources> ChunkManager<R> {
                         )
                     )
                 });
-                f([x, y as i32, z], &central.buffers[y], chunks,
+                f([x, y as i32, z], &mut central.buffers[y].borrow_mut(), chunks,
                   columns.map(|cz| cz.map(|cx| cx.map(|c| &c.biomes))))
             }
         }

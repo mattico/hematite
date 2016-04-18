@@ -11,7 +11,6 @@ use camera_controllers::{ CameraPerspective, FirstPerson, FirstPersonSettings };
 use docopt;
 use flate2::read::GzDecoder;
 use fps_counter::{ FPSCounter };
-use gfx::handle::Buffer;
 use gfx::traits::Device;
 use gfx;
 use gfx_device_gl;
@@ -56,14 +55,10 @@ pub struct App<'a, R: gfx::Resources, F: gfx::Factory<R>, D: gfx::Device> where 
     pub assets: Assets<R>,
     pub camera: RefCell<FirstPerson>,
     pub capture_cursor: RefCell<bool>,
-    pub chunk_manager: RefCell<ChunkManager<R>>,
+    pub chunk_manager: RefCell<ChunkManager<'a, R>>,
     pub device: RefCell<D>,
     pub fps_counter: RefCell<FPSCounter>,
-    pub pending_chunks: RefCell<Vec<(Vector3<i32>, &'a RefCell<Option<Buffer<R, Vertex>>>, 
-        [[[&'a Chunk; 3]; 3]; 3], Matrix3<Option<&'a [[BiomeId; 16]; 16]>>)>>,
     pub player: RefCell<Player>,
-    pub region: RefCell<Region>,
-    pub region_path: RefCell<PathBuf>,
     pub renderer: RefCell<Renderer<R, F>>,
     pub staging_buffer: RefCell<Vec<Vertex>>,
     pub window: RefCell<Sdl2Window>,
@@ -170,13 +165,10 @@ impl<'a> App<'a, gfx_device_gl::Resources, gfx_device_gl::Factory, gfx_device_gl
             assets: assets,
             camera: RefCell::new(first_person),
             capture_cursor: RefCell::new(false),
-            chunk_manager: RefCell::new(ChunkManager::new()),
+            chunk_manager: RefCell::new(ChunkManager::open(&region_file)),
             device: RefCell::new(device),
             fps_counter: RefCell::new(FPSCounter::new()),
-            pending_chunks: RefCell::new(vec![]),
             player: RefCell::new(player),
-            region: RefCell::new(region),
-            region_path: RefCell::new(region_file),
             renderer: RefCell::new(renderer),
             staging_buffer: RefCell::new(vec![]),
             window: RefCell::new(window),
@@ -200,44 +192,23 @@ impl<'a> App<'a, gfx_device_gl::Resources, gfx_device_gl::Factory, gfx_device_gl
                 self.device.borrow_mut().cleanup();
             }
             Event::Update(_) => {
-                use std::i32;
-                // HACK(eddyb) find the closest chunk to the player.
-                // The pending vector should be sorted instead.
-                let pp = self.camera.borrow().position.map(|x| (x / 16.0).floor() as i32);
-                let closest = self.pending_chunks.borrow().iter().enumerate().fold(
-                    (None, i32::max_value()),
-                    |(best_i, best_dist), (i, &(cc, _, _, _))| {
-                        let xyz = [cc[0] - pp[0], cc[1] - pp[1], cc[2] - pp[2]]
-                            .map(|x| x * x);
-                        let dist = xyz[0] + xyz[1] + xyz[2];
-                        if dist < best_dist {
-                            (Some(i), dist)
-                        } else {
-                            (best_i, best_dist)
-                        }
-                    }
-                ).0;
-                let pending = closest.and_then(|i| {
-                    // Vec swap_remove doesn't return Option anymore
-                    match self.pending_chunks.borrow().len() {
-                        0 => None,
-                        _ => Some(self.pending_chunks.borrow_mut().swap_remove(i))
-                    }
-                });
+                let staging_buffer = self.staging_buffer.borrow_mut();
+                
+                let pending = self.chunk_manager.borrow_mut().get_pending(&self.player.borrow());
+                
                 match pending {
+                    // TODO: Rethink this.
                     Some((coords, buffer, chunks, column_biomes)) => {
                         minecraft::block_state::fill_buffer(
-                            &self.assets, &mut *self.staging_buffer.borrow_mut(),
+                            &self.assets, &mut *staging_buffer,
                             coords, chunks, column_biomes
                         );
-                        *buffer.borrow_mut() = Some(
-                            self.renderer.borrow_mut().create_buffer(&self.staging_buffer.borrow_mut()[..])
+                        
+                        *buffer = Some(
+                            self.renderer.borrow_mut().create_buffer(&staging_buffer[..])
                         );
+                        
                         self.staging_buffer.borrow_mut().clear();
-
-                        if self.pending_chunks.borrow().is_empty() {
-                            println!("Finished filling chunk vertex buffers.");
-                        }
                     }
                     None => {}
                 }
@@ -337,38 +308,8 @@ impl<'a> App<'a, gfx_device_gl::Resources, gfx_device_gl::Factory, gfx_device_gl
             );
         self.window.borrow_mut().set_title(title);
     }
-}
-
-impl<'a, R: gfx::Resources, F: gfx::Factory<R>, D: gfx::Device> App<'a, R, F, D> {
-
+    
     pub fn load_chunks(&'a self) {
-        let player = self.player.borrow();
-        let player_chunk = [player.pos.x(), player.pos.z()]
-            .map(|x| (x / 16.0).floor() as i32);
-
-        let regions = player_chunk.map(|x| x >> 5);
-        let c_bases = player_chunk.map(|x| max(0, (x & 0x1f) - 8) as u8);
-
-
-        self.chunk_manager.borrow().each_chunk_and_neighbors(
-            |coords, buffer, chunks, column_biomes| {
-                self.pending_chunks.borrow_mut().push((coords, buffer, chunks, column_biomes).clone());
-            }
-        );
-
-        for cz in c_bases[1]..c_bases[1] + 16 {
-            for cx in c_bases[0]..c_bases[0] + 16 {
-                match self.region.borrow().get_chunk_column(cx, cz) {
-                    Some(column) => {
-                        let (cx, cz) = (
-                            cx as i32 + regions[0] * 32,
-                            cz as i32 + regions[1] * 32
-                        );
-                        self.chunk_manager.borrow_mut().add_chunk_column(cx, cz, column)
-                    }
-                    None => {}
-                }
-            }
-        }
+        self.chunk_manager.borrow_mut().load_chunks(&self.player.borrow());
     }
 }
