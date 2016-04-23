@@ -53,7 +53,6 @@ gfx_vertex_struct!( Vertex {
     rgb: [f32; 3] = "at_color",
 });
 
-
 pub struct Renderer<R: gfx::Resources, F: gfx::Factory<R>> {
     clear_color: [f32; 4],
     clear_depth: f32,

@@ -54,7 +54,7 @@ pub struct App<'a, R: gfx::Resources, F: gfx::Factory<R>, D: gfx::Device> where 
     pub args: Args,
     pub assets: Assets<R>,
     pub camera: RefCell<FirstPerson>,
-    pub capture_cursor: RefCell<bool>,
+    pub capture_cursor: bool,
     pub chunk_manager: RefCell<ChunkManager<'a, R>>,
     pub device: RefCell<D>,
     pub fps_counter: RefCell<FPSCounter>,
@@ -164,7 +164,7 @@ impl<'a> App<'a, gfx_device_gl::Resources, gfx_device_gl::Factory, gfx_device_gl
             args: args,
             assets: assets,
             camera: RefCell::new(first_person),
-            capture_cursor: RefCell::new(false),
+            capture_cursor: false,
             chunk_manager: RefCell::new(ChunkManager::open(&region_file)),
             device: RefCell::new(device),
             fps_counter: RefCell::new(FPSCounter::new()),
@@ -198,15 +198,16 @@ impl<'a> App<'a, gfx_device_gl::Resources, gfx_device_gl::Factory, gfx_device_gl
                 
                 match pending {
                     // TODO: Rethink this.
-                    Some((coords, buffer, chunks, column_biomes)) => {
+                    Some(chunk_buffer) => {
                         minecraft::block_state::fill_buffer(
-                            &self.assets, &mut *staging_buffer,
-                            coords, chunks, column_biomes
+                            &self.assets, 
+                            &mut *staging_buffer,
+                            chunk_buffer.coords, 
+                            chunk_buffer.chunks, 
+                            chunk_buffer.biomes,
                         );
                         
-                        *buffer = Some(
-                            self.renderer.borrow_mut().create_buffer(&staging_buffer[..])
-                        );
+                        chunk_buffer.buffer = self.renderer.borrow_mut().create_buffer(&staging_buffer[..]);
                         
                         self.staging_buffer.borrow_mut().clear();
                     }
@@ -214,15 +215,14 @@ impl<'a> App<'a, gfx_device_gl::Resources, gfx_device_gl::Factory, gfx_device_gl
                 }
             }
             Event::Input(Press(Keyboard(Key::C))) => {
-                let mut capture_cursor = self.capture_cursor.borrow_mut();
                 println!("Turned cursor capture {}",
-                    if *capture_cursor { "off" } else { "on" });
-                *capture_cursor = !*capture_cursor;
+                    if self.capture_cursor { "off" } else { "on" });
+                self.capture_cursor = !self.capture_cursor;
 
-                self.window.borrow_mut().set_capture_cursor(*capture_cursor);
+                self.window.borrow_mut().set_capture_cursor(self.capture_cursor);
             }
             Event::Input(Move(MouseRelative(_, _))) => {
-                if !*self.capture_cursor.borrow() {
+                if self.capture_cursor {
                     // Don't send the mouse event to the FPS controller.
                     return;
                 }

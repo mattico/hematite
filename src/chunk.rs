@@ -61,10 +61,16 @@ pub struct ChunkColumn<R: gfx::Resources> {
     pub biomes: [[BiomeId; SIZE]; SIZE]
 }
 
+pub struct ChunkBuffer<'a, R: gfx::Resources> where R: 'a {
+    pub coords: Vector3<i32>,
+    pub buffer: &'a Option<gfx::handle::Buffer<R, Vertex>>,
+    pub chunks: [[[&'a Chunk; 3]; 3]; 3],
+    pub biomes: Matrix3<Option<&'a [[BiomeId; 16]; 16]>>,
+}
+
 pub struct ChunkManager<'a, R: gfx::Resources> where R: 'a {
     chunk_columns: HashMap<(i32, i32), ChunkColumn<R>>,
-    pending_chunks: Vec<(Vector3<i32>, &'a Option<gfx::handle::Buffer<R, Vertex>>, 
-        [[[&'a Chunk; 3]; 3]; 3], Matrix3<Option<&'a [[BiomeId; 16]; 16]>>)>,
+    pending_chunks: Vec<ChunkBuffer<'a, R>>,
     region: Region,
     region_path: PathBuf,
 }
@@ -93,7 +99,12 @@ impl<'a, R: gfx::Resources> ChunkManager<'a, R> {
 
         self.each_chunk_and_neighbors(
             |coords, buffer, chunks, column_biomes| {
-                self.pending_chunks.push((coords, buffer, chunks, column_biomes).clone());
+                self.pending_chunks.push(ChunkBuffer {
+                    coords: coords,
+                    buffer: buffer,
+                    chunks: chunks,
+                    biomes: column_biomes,
+                });
             }
         );
 
@@ -113,10 +124,7 @@ impl<'a, R: gfx::Resources> ChunkManager<'a, R> {
         }
     }
     
-    pub fn get_pending(&mut self, player: &Player) -> Option<(Vector3<i32>, 
-                                                              &Option<gfx::handle::Buffer<R, Vertex>>,
-                                                              [[[&Chunk; 3]; 3]; 3],
-                                                              [[Option<&[[BiomeId; 16]; 16]>; 3]; 3])> {
+    pub fn get_pending(&mut self, player: &Player) -> Option<ChunkBuffer<'a, R>> {
         use std::i32;
         // HACK(eddyb) find the closest chunk to the player.
         // The pending vector should be sorted instead.
@@ -150,9 +158,8 @@ impl<'a, R: gfx::Resources> ChunkManager<'a, R> {
         where F: FnMut(/*coords:*/ [i32; 3],
                        /*buffer:*/ &'a Option<gfx::handle::Buffer<R, Vertex>>,
                        /*chunks:*/ [[[&'a Chunk; 3]; 3]; 3],
-                       /*biomes:*/ [[Option<&'a [[BiomeId; SIZE]; SIZE]>; 3]; 3])
-
-    {
+                       /*biomes:*/ [[Option<&'a [[BiomeId; SIZE]; SIZE]>; 3]; 3]) {
+                           
         for &(x, z) in self.chunk_columns.keys() {
             let columns = [-1, 0, 1].map(
                     |dz| [-1, 0, 1].map(
