@@ -59,8 +59,8 @@ fn main() {
 
     println!("Press C to capture mouse");
 
-    let mut events = app.window.borrow_mut().events().ups(120).max_fps(10_000);
-    while let Some(e) = events.next(&mut *app.window.borrow_mut()) {
+    let mut events = app.window.events().ups(120).max_fps(10_000);
+    while let Some(e) = events.next(&mut app.window) {
         app.handle_event(e);
     }
 }

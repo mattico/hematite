@@ -53,15 +53,15 @@ pub struct Args {
 pub struct App<'a, R: gfx::Resources, F: gfx::Factory<R>, D: gfx::Device> where R: 'a {
     pub args: Args,
     pub assets: Assets<R>,
-    pub camera: RefCell<FirstPerson>,
-    pub capture_cursor: RefCell<bool>,
-    pub chunk_manager: RefCell<ChunkManager<'a, R>>,
-    pub device: RefCell<D>,
-    pub fps_counter: RefCell<FPSCounter>,
-    pub player: RefCell<Player>,
-    pub renderer: RefCell<Renderer<R, F>>,
-    pub staging_buffer: RefCell<Vec<Vertex>>,
-    pub window: RefCell<Sdl2Window>,
+    pub camera: FirstPerson,
+    pub capture_cursor: bool,
+    pub chunk_manager: ChunkManager<'a, R>,
+    pub device: D,
+    pub fps_counter: FPSCounter,
+    pub player: Player,
+    pub renderer: Renderer<R, F>,
+    pub staging_buffer: Vec<Vertex>,
+    pub window: Sdl2Window,
     pub world: Nbt,
     pub world_path: PathBuf,
 }
@@ -163,15 +163,15 @@ impl<'a> App<'a, gfx_device_gl::Resources, gfx_device_gl::Factory, gfx_device_gl
         App {
             args: args,
             assets: assets,
-            camera: RefCell::new(first_person),
-            capture_cursor: RefCell::new(false),
-            chunk_manager: RefCell::new(ChunkManager::open(&region_file)),
-            device: RefCell::new(device),
-            fps_counter: RefCell::new(FPSCounter::new()),
-            player: RefCell::new(player),
-            renderer: RefCell::new(renderer),
-            staging_buffer: RefCell::new(vec![]),
-            window: RefCell::new(window),
+            camera: first_person,
+            capture_cursor: false,
+            chunk_manager: ChunkManager::open(&region_file),
+            device: device,
+            fps_counter: FPSCounter::new(),
+            player: player,
+            renderer: renderer,
+            staging_buffer: vec![],
+            window: window,
             world: level,
             world_path: world,
         }
@@ -189,41 +189,38 @@ impl<'a> App<'a, gfx_device_gl::Resources, gfx_device_gl::Factory, gfx_device_gl
                 self.render();
             }
             Event::AfterRender(_) => {
-                self.device.borrow_mut().cleanup();
+                self.device.cleanup();
             }
-            Event::Update(_) => {
-                let mut staging_buffer = self.staging_buffer.borrow_mut();
-                
-                let pending = self.chunk_manager.borrow_mut().get_pending(&self.player.borrow());
+            Event::Update(_) => {             
+                let pending = self.chunk_manager.get_pending(&self.player);
                 
                 match pending {
                     // TODO: Rethink this.
                     Some(chunk_buffer) => {
                         minecraft::block_state::fill_buffer(
                             &self.assets, 
-                            &mut *staging_buffer,
+                            &mut self.staging_buffer,
                             chunk_buffer.coords, 
                             chunk_buffer.chunks, 
                             chunk_buffer.biomes,
                         );
                         
-                        chunk_buffer.buffer = &Some(self.renderer.borrow_mut().create_buffer(&staging_buffer[..]));
+                        chunk_buffer.buffer = &Some(self.renderer.create_buffer(&self.staging_buffer[..]));
                         
-                        self.staging_buffer.borrow_mut().clear();
+                        self.staging_buffer.clear();
                     }
                     None => {}
                 }
             }
             Event::Input(Press(Keyboard(Key::C))) => {
-                let mut capture_cursor = self.capture_cursor.borrow_mut();
                 println!("Turned cursor capture {}",
-                    if *capture_cursor { "off" } else { "on" });
-                *capture_cursor = !*capture_cursor;
+                    if self.capture_cursor { "off" } else { "on" });
+                self.capture_cursor = !self.capture_cursor;
 
-                self.window.borrow_mut().set_capture_cursor(*capture_cursor);
+                self.window.set_capture_cursor(self.capture_cursor);
             }
             Event::Input(Move(MouseRelative(_, _))) => {
-                if *self.capture_cursor.borrow() {
+                if self.capture_cursor {
                     // Don't send the mouse event to the FPS controller.
                     return;
                 }
@@ -231,12 +228,12 @@ impl<'a> App<'a, gfx_device_gl::Resources, gfx_device_gl::Factory, gfx_device_gl
             _ => {}
         }
 
-        self.camera.borrow_mut().event(&event);
+        self.camera.event(&event);
     }
 
-    pub fn render(&self) {
+    pub fn render(&mut self) {
         // Apply the same y/z camera offset vanilla minecraft has.
-        let mut camera = self.camera.borrow().camera(0.0);
+        let mut camera = self.camera.camera(0.0);
         camera.position[1] += 1.62;
         let mut xz_forward = camera.forward;
         xz_forward[1] = 0.0;
@@ -247,57 +244,55 @@ impl<'a> App<'a, gfx_device_gl::Resources, gfx_device_gl::Factory, gfx_device_gl
         );
 
         let view_mat = camera.orthogonal();
-        self.renderer.borrow_mut().set_view(view_mat);
-        self.renderer.borrow_mut().clear();
+        self.renderer.set_view(view_mat);
+        self.renderer.clear();
         let mut num_chunks: usize = 0;
         let mut num_sorted_chunks: usize = 0;
         let mut num_total_chunks: usize = 0;
         let start_time = time::precise_time_ns();
-        self.chunk_manager.borrow_mut().each_chunk(|cx, cy, cz, _, buffer| {
-            if let Some(buffer) = buffer.borrow_mut().as_mut() {
-                num_total_chunks += 1;
+        self.chunk_manager.each_chunk(|cx, cy, cz, _, buffer| {
+            num_total_chunks += 1;
 
-                let inf = INFINITY;
-                let mut bb_min = [inf, inf, inf];
-                let mut bb_max = [-inf, -inf, -inf];
-                let xyz = [cx, cy, cz].map(|x| x as f32 * 16.0);
-                for &dx in [0.0, 16.0].iter() {
-                    for &dy in [0.0, 16.0].iter() {
-                        for &dz in [0.0, 16.0].iter() {
-                            use vecmath::col_mat4_transform;
+            let inf = INFINITY;
+            let mut bb_min = [inf, inf, inf];
+            let mut bb_max = [-inf, -inf, -inf];
+            let xyz = [cx, cy, cz].map(|x| x as f32 * 16.0);
+            for &dx in [0.0, 16.0].iter() {
+                for &dy in [0.0, 16.0].iter() {
+                    for &dz in [0.0, 16.0].iter() {
+                        use vecmath::col_mat4_transform;
 
-                            let v = vec3_add(xyz, [dx, dy, dz]);
-                            let xyzw = col_mat4_transform(view_mat, [v[0], v[1], v[2], 1.0]);
-                            let v = col_mat4_transform(self.renderer.borrow().get_projection(), xyzw);
-                            let xyz = vec3_scale([v[0], v[1], v[2]], 1.0 / v[3]);
-                            bb_min = Array::from_fn(|i| bb_min[i].min(xyz[i]));
-                            bb_max = Array::from_fn(|i| bb_max[i].max(xyz[i]));
-                        }
+                        let v = vec3_add(xyz, [dx, dy, dz]);
+                        let xyzw = col_mat4_transform(view_mat, [v[0], v[1], v[2], 1.0]);
+                        let v = col_mat4_transform(self.renderer.get_projection(), xyzw);
+                        let xyz = vec3_scale([v[0], v[1], v[2]], 1.0 / v[3]);
+                        bb_min = Array::from_fn(|i| bb_min[i].min(xyz[i]));
+                        bb_max = Array::from_fn(|i| bb_max[i].max(xyz[i]));
                     }
                 }
+            }
 
-                let cull_bits: [bool; 3] = Array::from_fn(|i| {
-                    let (min, max) = (bb_min[i], bb_max[i]);
-                    min.signum() == max.signum()
-                        && min.abs().min(max.abs()) >= 1.0
-                });
+            let cull_bits: [bool; 3] = Array::from_fn(|i| {
+                let (min, max) = (bb_min[i], bb_max[i]);
+                min.signum() == max.signum()
+                    && min.abs().min(max.abs()) >= 1.0
+            });
 
-                if !cull_bits.iter().any(|&cull| cull) {
-                    self.renderer.borrow_mut().render(buffer);
-                    num_chunks += 1;
+            if !cull_bits.iter().any(|&cull| cull) {
+                self.renderer.render(&mut buffer.borrow_mut().unwrap());
+                num_chunks += 1;
 
-                    if bb_min[0] < 0.0 && bb_max[0] > 0.0
-                    || bb_min[1] < 0.0 && bb_max[1] > 0.0 {
-                        num_sorted_chunks += 1;
-                    }
+                if bb_min[0] < 0.0 && bb_max[0] > 0.0
+                || bb_min[1] < 0.0 && bb_max[1] > 0.0 {
+                    num_sorted_chunks += 1;
                 }
             }
         });
         let end_time = time::precise_time_ns();
-        self.renderer.borrow_mut().flush(&mut *self.device.borrow_mut());
+        self.renderer.flush(&mut self.device);
         let frame_end_time = time::precise_time_ns();
 
-        let fps = self.fps_counter.borrow_mut().tick();
+        let fps = self.fps_counter.tick();
         let title = format!(
                 "Hematite sort={} render={} total={} in {:.2}ms+{:.2}ms @ {}FPS - {}",
                 num_sorted_chunks,
@@ -307,10 +302,10 @@ impl<'a> App<'a, gfx_device_gl::Resources, gfx_device_gl::Factory, gfx_device_gl
                 (frame_end_time - end_time) as f64 / 1e6,
                 fps, self.world_path.file_name().unwrap().to_str().unwrap()
             );
-        self.window.borrow_mut().set_title(title);
+        self.window.set_title(title);
     }
     
-    pub fn load_chunks(&'a self) {
-        self.chunk_manager.borrow_mut().load_chunks(&self.player.borrow());
+    pub fn load_chunks(&'a mut self) {
+        self.chunk_manager.load_chunks(&self.player);
     }
 }
