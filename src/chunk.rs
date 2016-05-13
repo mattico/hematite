@@ -71,6 +71,7 @@ pub struct ChunkBuffer<'a, R: gfx::Resources> where R: 'a {
 pub struct ChunkManager<'a, R: gfx::Resources> where R: 'a {
     chunk_columns: HashMap<(i32, i32), ChunkColumn<R>>,
     pending_chunks: Vec<ChunkBuffer<'a, R>>,
+    sorted_pos: Option<Vector3<i32>>,
     region: Region,
     region_path: PathBuf,
 }
@@ -80,6 +81,7 @@ impl<'a, R: gfx::Resources> ChunkManager<'a, R> {
         ChunkManager {
             chunk_columns: HashMap::new(),
             pending_chunks: Vec::new(),
+            sorted_pos: None,
             region: Region::open(path).unwrap(),
             region_path: path.to_path_buf(),
         }
@@ -107,6 +109,7 @@ impl<'a, R: gfx::Resources> ChunkManager<'a, R> {
                 });
             }
         );
+        self.sorted_pos = None;
 
         for cz in c_bases[1]..c_bases[1] + 16 {
             for cx in c_bases[0]..c_bases[0] + 16 {
@@ -124,35 +127,28 @@ impl<'a, R: gfx::Resources> ChunkManager<'a, R> {
         }
     }
     
+    fn sort_pending(&mut self, pos: Vector3<i32>) {
+        self.pending_chunks.sort_by_key(|k| {
+            let cc = k.coords;
+            let xyz = [cc[0] - pos[0], cc[1] - pos[1], cc[2] - pos[2]]
+                .map(|x| x * x);
+            let dist = xyz[0] + xyz[1] + xyz[2];
+            
+            -dist // Sort in reverse so pop() removes the closest first
+        });
+    }
+    
     pub fn get_pending(&mut self, player: &Player) -> Option<ChunkBuffer<'a, R>> {
         use std::i32;
-        // HACK(eddyb) find the closest chunk to the player.
-        // The pending vector should be sorted instead.
+        
         let pp = player.pos.map(|i| i as i32);
-        let closest = self.pending_chunks.iter().enumerate().fold(
-            (None, i32::max_value()),
-            |(best_i, best_dist), (i, ref chunk_buf)| {
-                let cc = chunk_buf.coords;
-                let xyz = [cc[0] - pp[0], cc[1] - pp[1], cc[2] - pp[2]]
-                    .map(|x| x * x);
-                let dist = xyz[0] + xyz[1] + xyz[2];
-                if dist < best_dist {
-                    (Some(i), dist)
-                } else {
-                    (best_i, best_dist)
-                }
-            }
-        ).0;
         
-        let pending = closest.and_then(|i| {
-            // Vec swap_remove doesn't return Option anymore
-            match self.pending_chunks.len() {
-                0 => None,
-                _ => Some(self.pending_chunks.swap_remove(i))
-            }
-        });
+        if self.sorted_pos == None || self.sorted_pos != Some(pp) {
+            self.sort_pending(pp);
+            self.sorted_pos = Some(pp);
+        }
         
-        pending
+        self.pending_chunks.pop()
     }
 
     pub fn each_chunk_and_neighbors<F>(&'a self, mut f: F)
