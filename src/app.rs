@@ -54,7 +54,7 @@ pub struct App<'a, R: gfx::Resources, F: gfx::Factory<R>, D: gfx::Device> where 
     pub args: Args,
     pub assets: Assets<R>,
     pub camera: RefCell<FirstPerson>,
-    pub capture_cursor: bool,
+    pub capture_cursor: RefCell<bool>,
     pub chunk_manager: RefCell<ChunkManager<'a, R>>,
     pub device: RefCell<D>,
     pub fps_counter: RefCell<FPSCounter>,
@@ -164,7 +164,7 @@ impl<'a> App<'a, gfx_device_gl::Resources, gfx_device_gl::Factory, gfx_device_gl
             args: args,
             assets: assets,
             camera: RefCell::new(first_person),
-            capture_cursor: false,
+            capture_cursor: RefCell::new(false),
             chunk_manager: RefCell::new(ChunkManager::open(&region_file)),
             device: RefCell::new(device),
             fps_counter: RefCell::new(FPSCounter::new()),
@@ -177,7 +177,7 @@ impl<'a> App<'a, gfx_device_gl::Resources, gfx_device_gl::Factory, gfx_device_gl
         }
     }
 
-    pub fn handle_event(&self, event: Event) {
+    pub fn handle_event(&mut self, event: Event) {
         use piston::input::Button::Keyboard;
         use piston::input::Input::{ Move, Press };
         use piston::input::keyboard::Key;
@@ -192,7 +192,7 @@ impl<'a> App<'a, gfx_device_gl::Resources, gfx_device_gl::Factory, gfx_device_gl
                 self.device.borrow_mut().cleanup();
             }
             Event::Update(_) => {
-                let staging_buffer = self.staging_buffer.borrow_mut();
+                let mut staging_buffer = self.staging_buffer.borrow_mut();
                 
                 let pending = self.chunk_manager.borrow_mut().get_pending(&self.player.borrow());
                 
@@ -207,7 +207,7 @@ impl<'a> App<'a, gfx_device_gl::Resources, gfx_device_gl::Factory, gfx_device_gl
                             chunk_buffer.biomes,
                         );
                         
-                        chunk_buffer.buffer = self.renderer.borrow_mut().create_buffer(&staging_buffer[..]);
+                        chunk_buffer.buffer = &Some(self.renderer.borrow_mut().create_buffer(&staging_buffer[..]));
                         
                         self.staging_buffer.borrow_mut().clear();
                     }
@@ -215,14 +215,15 @@ impl<'a> App<'a, gfx_device_gl::Resources, gfx_device_gl::Factory, gfx_device_gl
                 }
             }
             Event::Input(Press(Keyboard(Key::C))) => {
+                let mut capture_cursor = self.capture_cursor.borrow_mut();
                 println!("Turned cursor capture {}",
-                    if self.capture_cursor { "off" } else { "on" });
-                self.capture_cursor = !self.capture_cursor;
+                    if *capture_cursor { "off" } else { "on" });
+                *capture_cursor = !*capture_cursor;
 
-                self.window.borrow_mut().set_capture_cursor(self.capture_cursor);
+                self.window.borrow_mut().set_capture_cursor(*capture_cursor);
             }
             Event::Input(Move(MouseRelative(_, _))) => {
-                if self.capture_cursor {
+                if *self.capture_cursor.borrow() {
                     // Don't send the mouse event to the FPS controller.
                     return;
                 }

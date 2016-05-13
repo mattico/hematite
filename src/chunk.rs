@@ -131,7 +131,8 @@ impl<'a, R: gfx::Resources> ChunkManager<'a, R> {
         let pp = player.pos.map(|i| i as i32);
         let closest = self.pending_chunks.iter().enumerate().fold(
             (None, i32::max_value()),
-            |(best_i, best_dist), (i, &(cc, _, _, _))| {
+            |(best_i, best_dist), (i, ref chunk_buf)| {
+                let cc = chunk_buf.coords;
                 let xyz = [cc[0] - pp[0], cc[1] - pp[1], cc[2] - pp[2]]
                     .map(|x| x * x);
                 let dist = xyz[0] + xyz[1] + xyz[2];
