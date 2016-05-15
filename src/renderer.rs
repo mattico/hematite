@@ -1,5 +1,4 @@
 use gfx::traits::FactoryExt;
-use gfx::pso::DataLink;
 use gfx;
 use vecmath::{self, Matrix4};
 

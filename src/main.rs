@@ -33,14 +33,14 @@ use piston::event_loop::{ Events, EventLoop };
 use flate2::read::GzDecoder;
 use sdl2_window::Sdl2Window;
 use gfx::traits::Device;
-use shader::Renderer;
+use renderer::Renderer;
 use vecmath::{ vec3_add, vec3_scale, vec3_normalized };
 use piston::window::{ Size, Window, AdvancedWindow, OpenGLWindow,
     WindowSettings };
 
 pub mod minecraft;
 pub mod chunk;
-pub mod shader;
+pub mod renderer;
 
 use minecraft::biome::Biomes;
 use minecraft::block_state::BlockStates;

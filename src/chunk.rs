@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 use array::*;
-use shader::Vertex;
+use renderer::Vertex;
 use gfx;
 
 #[derive(Copy, Clone)]
