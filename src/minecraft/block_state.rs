@@ -20,7 +20,7 @@ use minecraft::model::OrthoRotation::*;
 use minecraft::model::{self, Model, OrthoRotation};
 
 use chunk::{BiomeId, BlockState, Chunk};
-use shader::Vertex;
+use renderer::Vertex;
 
 use self::PolymorphDecision::*;
 

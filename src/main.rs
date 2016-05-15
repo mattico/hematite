@@ -34,14 +34,14 @@ use gfx::traits::Device;
 use piston::event_loop::{ Events, EventLoop };
 use piston::window::{ Size, Window, AdvancedWindow, OpenGLWindow, WindowSettings };
 use sdl2_window::Sdl2Window;
-use shader::Renderer;
+use renderer::Renderer;
 use vecmath::*;
 
 pub mod app;
 pub mod chunk;
 pub mod minecraft;
 pub mod player;
-pub mod shader;
+pub mod renderer;
 
 use minecraft::biome::Biomes;
 use minecraft::block_state::BlockStates;

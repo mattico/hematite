@@ -30,7 +30,7 @@ use minecraft::region::Region;
 
 use chunk::{ BiomeId, Chunk, ChunkManager };
 use player::Player;
-use shader::{ Renderer, Vertex };
+use renderer::{ Renderer, Vertex };
 
 pub static USAGE: &'static str = "
 hematite, Minecraft made in Rust!
