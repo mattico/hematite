@@ -33,14 +33,14 @@ use piston::event_loop::{ Events, EventLoop };
 use flate2::read::GzDecoder;
 use sdl2_window::Sdl2Window;
 use gfx::traits::Device;
-use renderer::Renderer;
+use render::Renderer;
 use vecmath::{ vec3_add, vec3_scale, vec3_normalized };
 use piston::window::{ Size, Window, AdvancedWindow, OpenGLWindow,
     WindowSettings };
 
 pub mod minecraft;
 pub mod chunk;
-pub mod renderer;
+pub mod render;
 
 use minecraft::biome::Biomes;
 use minecraft::block_state::BlockStates;
@@ -56,29 +56,37 @@ Options:
     --mcversion=<version>    Minecraft version [default: 1.8.8].
 ";
 
-#[derive(RustcDecodable)]
+#[derive(RustcDecodable, Clone, Debug)]
 struct Args {
     arg_world: String,
     flag_path: bool,
     flag_mcversion: String,
 }
 
-fn create_main_targets(dim: gfx::tex::Dimensions) ->
-(gfx::handle::RenderTargetView<
-    gfx_device_gl::Resources, gfx::format::Srgba8>,
- gfx::handle::DepthStencilView<
-    gfx_device_gl::Resources, gfx::format::DepthStencil>) {
+pub struct Game<'a, R: gfx::Resources, F: gfx::Factory<R>, D: gfx::Device> where R: 'a {
+    renderer: render::Renderer<R, F>,
+    window: Sdl2Window,
+}
+
+impl<'a> Game<'a, gfx_device_gl::Resources, gfx_device_gl::Factory, gfx_device_gl::Device> {
+    
+}
+
+fn create_main_targets(dim: gfx::tex::Dimensions)
+                       -> (gfx::handle::RenderTargetView<gfx_device_gl::Resources,
+                                                         gfx::format::Srgba8>,
+                           gfx::handle::DepthStencilView<gfx_device_gl::Resources,
+                                                         gfx::format::DepthStencil>) {
     use gfx::core::factory::Typed;
     use gfx::format::{DepthStencil, Format, Formatted, Srgba8};
 
     let color_format: Format = <Srgba8 as Formatted>::get_format();
     let depth_format: Format = <DepthStencil as Formatted>::get_format();
     let (output_color, output_stencil) =
-        gfx_device_gl::create_main_targets_raw(dim,
-                                               color_format.0,
-                                               depth_format.0);
+        gfx_device_gl::create_main_targets_raw(dim, color_format.0, depth_format.0);
     let output_color = Typed::new(output_color);
     let output_stencil = Typed::new(output_stencil);
+    
     (output_color, output_stencil)
 }
 

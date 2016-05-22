@@ -16,7 +16,7 @@ use minecraft::data::BLOCK_STATES;
 use minecraft::model::OrthoRotation::*;
 use minecraft::model::{self, Model, OrthoRotation};
 use rustc_serialize::json;
-use renderer::Vertex;
+use render::Vertex;
 use vecmath::vec3_add;
 
 use self::PolymorphDecision::*;

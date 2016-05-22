@@ -53,22 +53,22 @@ gfx_vertex_struct!( Vertex {
 });
 
 
-pub struct Renderer<R: gfx::Resources, F: gfx::Factory<R>, C: gfx::CommandBuffer<R>> {
+pub struct Renderer<R: gfx::Resources, F: gfx::Factory<R>> {
     factory: F,
     pub pipe: gfx::PipelineState<R, pipe::Meta>,
     data: pipe::Data<R>,
-    encoder: gfx::Encoder<R, C>,
+    encoder: gfx::Encoder<R, F::CommandBuffer>,
     clear_color: [f32; 4],
     clear_depth: f32,
     clear_stencil: u8,
     slice: gfx::Slice<R>,
 }
 
-impl<R: gfx::Resources, F: gfx::Factory<R>, C: gfx::CommandBuffer<R>> Renderer<R, F, C> {
+impl<R: gfx::Resources, F: gfx::Factory<R>> Renderer<R, F> {
 
-    pub fn new(mut factory: F, encoder: gfx::Encoder<R, C>, target: gfx::handle::RenderTargetView<R, gfx::format::Srgba8>,
+    pub fn new(mut factory: F, target: gfx::handle::RenderTargetView<R, gfx::format::Srgba8>,
         depth: gfx::handle::DepthStencilView<R, (gfx::format::D24_S8, gfx::format::Unorm)>, 
-        tex: gfx::handle::Texture<R, gfx::format::R8_G8_B8_A8>) -> Renderer<R, F, C> {
+        tex: gfx::handle::Texture<R, gfx::format::R8_G8_B8_A8>) -> Renderer<R, F> {
 
         let sampler = factory.create_sampler(
                 gfx::tex::SamplerInfo::new(
@@ -97,6 +97,8 @@ impl<R: gfx::Resources, F: gfx::Factory<R>, C: gfx::CommandBuffer<R>> Renderer<R
             out_color: target,
             out_depth: depth,
         };
+        
+        let encoder = factory.create_encoder();
 
         Renderer {
             factory: factory,
@@ -124,7 +126,7 @@ impl<R: gfx::Resources, F: gfx::Factory<R>, C: gfx::CommandBuffer<R>> Renderer<R
         self.encoder.clear_stencil(&self.data.out_depth, self.clear_stencil);
     }
 
-    pub fn flush<D: gfx::Device<Resources=R, CommandBuffer=C> + Sized>(&mut self, device: &mut D) {
+    pub fn flush<D: gfx::Device<Resources=R, CommandBuffer=F::CommandBuffer> + Sized>(&mut self, device: &mut D) {
         self.encoder.flush(device);
     }
 
